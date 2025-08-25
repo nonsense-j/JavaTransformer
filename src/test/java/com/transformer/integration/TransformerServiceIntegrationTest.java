@@ -51,16 +51,16 @@ public class TransformerServiceIntegrationTest {
     @Test
     public void testGuidedTransformationWithBugInfo() throws IOException {
         // Arrange
-        String inputFile = testInputDir + "/AssignmentExample.java";
+        String inputFile = testInputDir + "/AssignExpCross.java";
         String outputDir = testOutputDir;
-        BugInformation bugInfo = TestUtils.createTestBugInformation(Arrays.asList(5));
+        BugInformation bugInfo = TestUtils.createTestBugInformation(Arrays.asList(7));
 
         // Act
         TransformationResult result = transformerService.applyGuidedTransform(
                 inputFile, outputDir, bugInfo, "AddBrackets");
         // TransformationResult result = transformerService.applyTargetTransform(
-        //         inputFile, outputDir, Arrays.asList(13), "AddBrackets");
-
+        //         inputFile, outputDir, Arrays.asList(7), "AddBrackets");
+        // TransformationResult result = transformerService.applyRandomTransform(inputFile, outputDir, 3, "AddBrackets");
         // Assert
         assertNotNull("Result should not be null", result);
 

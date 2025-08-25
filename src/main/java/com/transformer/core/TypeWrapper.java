@@ -77,6 +77,7 @@ public class TypeWrapper {
     private List<TypeDeclaration> types;
     private HashMap<String, List<ASTNode>> method2statements;
     private HashMap<String, HashSet<String>> method2identifiers;
+    private HashMap<String, List<ASTNode>> field2statements;
 
     // Transformation tracking
     private List<String> appliedTransforms;
@@ -132,6 +133,7 @@ public class TypeWrapper {
         this.types = new ArrayList<>();
         this.method2statements = new HashMap<>();
         this.method2identifiers = new HashMap<>();
+        this.field2statements = new HashMap<>();
     }
 
     /**
@@ -173,6 +175,7 @@ public class TypeWrapper {
         this.allNodes.clear();
         this.method2statements.clear();
         this.method2identifiers.clear();
+        this.field2statements.clear();
         
         // Extract type declarations
         for (ASTNode node : (List<ASTNode>) this.cu.types()) {
@@ -194,6 +197,8 @@ public class TypeWrapper {
                     processInitializer((Initializer) component, type, initializerCount++);
                 } else if (component instanceof MethodDeclaration) {
                     processMethodDeclaration((MethodDeclaration) component, type);
+                } else if (component instanceof FieldDeclaration) {
+                    processFieldDeclaration((FieldDeclaration) component, type);
                 }
             }
         }
@@ -235,6 +240,23 @@ public class TypeWrapper {
         String key = type.getName().toString() + ":" + createMethodSignature(method);
         this.method2identifiers.put(key, ids);
         this.method2statements.put(key, statements);
+    }
+
+    private void processFieldDeclaration(FieldDeclaration field, TypeDeclaration type) {
+        // Implementation for processing field declarations
+        // get the name of the field
+        VariableDeclarationFragment fieldFragment = (VariableDeclarationFragment) field.fragments().get(0);
+        SimpleName fieldSimpleName = fieldFragment.getName();
+        String fieldName = fieldSimpleName.toString();
+
+        if (field2statements.containsKey(fieldName)) {
+            this.field2statements.get(fieldName).add(field);
+        }
+        else {
+            List<ASTNode> statements = new ArrayList<>();
+            statements.add(field);
+            this.field2statements.put(fieldName, statements);
+        }
     }
 
     /**
@@ -411,6 +433,10 @@ public class TypeWrapper {
 
     public HashMap<String, HashSet<String>> getMethod2identifiers() {
         return new HashMap<>(this.method2identifiers);
+    }
+
+    public HashMap<String, List<ASTNode>> getField2statements() {
+        return new HashMap<>(this.field2statements);
     }
 
     public List<ASTNode> getPriorNodes() {

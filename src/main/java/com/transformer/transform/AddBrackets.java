@@ -7,6 +7,7 @@ import org.eclipse.jdt.core.dom.ArrayType;
 import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionStatement;
+import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.ParenthesizedExpression;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
@@ -45,6 +46,11 @@ public class AddBrackets extends Transform {
             VariableDeclarationFragment vdFragment = (VariableDeclarationFragment) ((VariableDeclarationStatement) sourceStatement).fragments().get(0);
             expression = vdFragment.getInitializer();
         }
+
+        if (sourceStatement instanceof FieldDeclaration) {
+            VariableDeclarationFragment fdFragment = (VariableDeclarationFragment) ((FieldDeclaration) sourceStatement).fragments().get(0);
+            expression = fdFragment.getInitializer();
+        }
         
         if (expression == null) {
             return false;
@@ -77,6 +83,12 @@ public class AddBrackets extends Transform {
             }
             VariableDeclarationFragment vdFragment = (VariableDeclarationFragment) ((VariableDeclarationStatement) statement).fragments().get(0);
             if (vdFragment.getInitializer() != null) {
+                nodes.add(statement);
+            }
+        } else if (statement instanceof FieldDeclaration) {
+            FieldDeclaration fd = (FieldDeclaration) statement;
+            VariableDeclarationFragment fdFragment = (VariableDeclarationFragment) fd.fragments().get(0);
+            if (fdFragment.getInitializer() != null) {
                 nodes.add(statement);
             }
         }

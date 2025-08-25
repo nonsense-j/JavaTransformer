@@ -4,8 +4,11 @@ import com.transformer.api.BugInformation;
 import com.transformer.core.TypeWrapper;
 import org.eclipse.jdt.core.dom.*;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -55,10 +58,10 @@ public class GuidedLocationStrategy implements LocationStrategy {
      * @return List of candidate AST nodes including data flow related nodes
      */
     private List<ASTNode> getCandidateNodes(TypeWrapper wrapper, List<Integer> validLines) {
-        List<ASTNode> resNodes = new ArrayList<>();
+        LinkedHashSet<ASTNode> resNodes = new LinkedHashSet<>();
 
         if (validLines == null) { // no warning in this file
-            return resNodes;
+            return new ArrayList<>();
         }
 
         // Step 1: Find nodes at exact bug lines
@@ -89,7 +92,7 @@ public class GuidedLocationStrategy implements LocationStrategy {
         }
 
         if (resNodes.isEmpty()) {
-            return resNodes;
+            return new ArrayList<>();
         }
 
         // Step 3: Add literal expressions in if statements
@@ -106,13 +109,10 @@ public class GuidedLocationStrategy implements LocationStrategy {
         resNodes.addAll(nodes2add);
 
         // Step 4: Data flow analysis - find related variables and assignments
-        HashSet<String> sources = new HashSet<>();
         List<ASTNode> methodNodes = new ArrayList<>();
-        Expression rightExpression = null;
 
-        // Extract variable names from assignments and declarations
+        // Handle field declarations
         for (ASTNode node : resNodes) {
-            // Handle field declarations
             if (node instanceof FieldDeclaration) {
                 String fieldName = ((VariableDeclarationFragment) ((FieldDeclaration) node).fragments().get(0))
                         .getName().getFullyQualifiedName();
@@ -137,6 +137,18 @@ public class GuidedLocationStrategy implements LocationStrategy {
                     }
                 }
             }
+        }
+
+        // Step 5: Analyze data dependencies
+        // recursively retrieve all the related nodes with related variable (data-flow)
+        ArrayDeque<ASTNode> resNodeQueue = new ArrayDeque<>(resNodes);
+        HashSet<String> sources = new HashSet<>();
+        HashMap<String, List<ASTNode>> field2stmts = wrapper.getField2statements();
+
+        while (!resNodeQueue.isEmpty()) {
+            ASTNode node = resNodeQueue.poll();
+            Expression rightExpression = null;
+            sources.clear();
 
             // Extract right-hand side expressions from variable declarations
             if (node instanceof VariableDeclarationStatement) {
@@ -150,89 +162,91 @@ public class GuidedLocationStrategy implements LocationStrategy {
                     && ((ExpressionStatement) node).getExpression() instanceof Assignment) {
                 rightExpression = ((Assignment) ((ExpressionStatement) node).getExpression()).getRightHandSide();
             }
-        }
 
-        // Step 5: Analyze data dependencies
-        if (rightExpression != null) {
-            // Extract variable names from simple name expressions
-            if (rightExpression instanceof SimpleName) {
-                sources.add(((SimpleName) rightExpression).getIdentifier());
-            }
-
-            if (rightExpression instanceof Expression) {
-                for (ASTNode subNode : TypeWrapper.getChildrenNodes(rightExpression)) {
-                    if (subNode instanceof SimpleName) {
-                        sources.add(((SimpleName) subNode).getIdentifier());
+            // Extract variable names from rightExpression
+            if (rightExpression != null) {
+                if (rightExpression instanceof SimpleName) {
+                    sources.add(((SimpleName) rightExpression).getIdentifier());
+                }
+    
+                if (rightExpression instanceof Expression) {
+                    for (ASTNode subNode : TypeWrapper.getChildrenNodes(rightExpression)) {
+                        if (subNode instanceof SimpleName) {
+                            sources.add(((SimpleName) subNode).getIdentifier());
+                        }
                     }
                 }
-            }
 
-            // Extract variable names from constructor calls
-            if (rightExpression instanceof ClassInstanceCreation || rightExpression instanceof MethodInvocation) {
-                List<Expression> arguments;
-                if (rightExpression instanceof ClassInstanceCreation){
-                    arguments = ((ClassInstanceCreation) rightExpression).arguments(); 
-                }
-                else {
-                    arguments = ((MethodInvocation) rightExpression).arguments(); 
-                }
-                for (Expression argument : arguments) {
-                    if (argument instanceof MethodInvocation) {
-                        Expression argExpr = ((MethodInvocation) argument).getExpression();
-                        if (argExpr instanceof SimpleName) {
-                            sources.add(((SimpleName) argExpr).getIdentifier());
+                if (rightExpression instanceof ClassInstanceCreation || rightExpression instanceof MethodInvocation) {
+                    List<Expression> arguments;
+                    if (rightExpression instanceof ClassInstanceCreation){
+                        arguments = ((ClassInstanceCreation) rightExpression).arguments(); 
+                    }
+                    else {
+                        arguments = ((MethodInvocation) rightExpression).arguments(); 
+                    }
+                    for (Expression argument : arguments) {
+                        if (argument instanceof MethodInvocation) {
+                            Expression argExpr = ((MethodInvocation) argument).getExpression();
+                            if (argExpr instanceof SimpleName) {
+                                sources.add(((SimpleName) argExpr).getIdentifier());
+                            }
                         }
                     }
                 }
             }
-
-            // Find related statements in the same method
-            if (!resNodes.isEmpty()) {
-                MethodDeclaration method = TypeWrapper.getDirectMethodOfNode(resNodes.get(0));
-                if (method != null) {
-                    Block block = method.getBody();
-                    if (block != null) {
-                        List<Statement> subStatements = TypeWrapper.getAllStatements(block.statements());
-                        for (Statement statement : subStatements) {
-                            // Find assignments to variables we're tracking
-                            if (statement instanceof ExpressionStatement
-                                    && ((ExpressionStatement) statement).getExpression() instanceof Assignment) {
-                                Assignment assignment = (Assignment) ((ExpressionStatement) statement).getExpression();
-                                if (assignment.getLeftHandSide() instanceof SimpleName) {
-                                    if (sources.contains(((SimpleName) assignment.getLeftHandSide()).getIdentifier())) {
+            // Add related nodes to the queue
+            MethodDeclaration method = TypeWrapper.getDirectMethodOfNode(node);
+            if (method != null) {
+                Block block = method.getBody();
+                if (block != null) {
+                    List<Statement> subStatements = TypeWrapper.getAllStatements(block.statements());
+                    for (Statement statement : subStatements) {
+                        // Find assignments to variables we're tracking
+                        if (statement instanceof ExpressionStatement
+                                && ((ExpressionStatement) statement).getExpression() instanceof Assignment) {
+                            Assignment assignment = (Assignment) ((ExpressionStatement) statement).getExpression();
+                            if (assignment.getLeftHandSide() instanceof SimpleName) {
+                                if (sources.contains(((SimpleName) assignment.getLeftHandSide()).getIdentifier())) {
+                                    if (!resNodes.contains(statement)) {
+                                        resNodeQueue.offer(statement);
                                         resNodes.add(statement);
                                     }
                                 }
                             }
-
-                            // Find variable declarations for variables we're tracking
-                            if (statement instanceof VariableDeclarationStatement) {
-                                VariableDeclarationFragment vd = (VariableDeclarationFragment) ((VariableDeclarationStatement) statement)
-                                        .fragments().get(0);
-                                String varName = vd.getName().getIdentifier();
-                                if (sources.contains(varName)) {
-                                    resNodes.add(statement);
-                                }
+                        }
+                        // Find variable declarations for variables we're tracking
+                        if (statement instanceof VariableDeclarationStatement) {
+                            VariableDeclarationFragment vd = (VariableDeclarationFragment) ((VariableDeclarationStatement) statement)
+                                    .fragments().get(0);
+                            String varName = vd.getName().getIdentifier();
+                            if (sources.contains(varName) && !resNodes.contains(statement)) {
+                                resNodeQueue.offer(statement);
+                                resNodes.add(statement);
                             }
                         }
                     }
+                }
+            }
+            for (String source: sources) {
+                if (field2stmts.containsKey(source)) {
+                    resNodes.addAll(field2stmts.get(source));
                 }
             }
         }
 
         // Step 6: Filter out unwanted node types
-        for (int i = resNodes.size() - 1; i >= 0; i--) {
-            ASTNode resNode = resNodes.get(i);
-            if (resNode instanceof TypeDeclaration || resNode instanceof Initializer ||
-                    resNode instanceof EnumDeclaration || resNode instanceof AnnotationTypeDeclaration) {
-                resNodes.remove(i);
-            }
-        }
+        resNodes.removeIf(resNode -> 
+            resNode instanceof TypeDeclaration || 
+            resNode instanceof Initializer ||
+            resNode instanceof EnumDeclaration || 
+            resNode instanceof AnnotationTypeDeclaration
+        );
 
         // Step 7: Add method-level nodes
         resNodes.addAll(methodNodes);
 
-        return resNodes;
+        return new ArrayList<>(resNodes);
     }
 
     @Override

@@ -2,7 +2,10 @@ package com.transformer.strategy;
 
 import com.transformer.core.TypeWrapper;
 import org.eclipse.jdt.core.dom.ASTNode;
+import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
+import org.eclipse.jdt.core.dom.EnumDeclaration;
 
+import java.beans.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
