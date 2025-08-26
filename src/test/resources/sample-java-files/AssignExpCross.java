@@ -1,6 +1,6 @@
 public class AssignExpCross {
 
-    int result = 10 + 20;
+    static int result = 10 + 20;
 
     public void calculate() {
         int multiplied = result * 2;

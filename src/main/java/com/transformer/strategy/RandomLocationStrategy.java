@@ -2,10 +2,11 @@ package com.transformer.strategy;
 
 import com.transformer.core.TypeWrapper;
 import org.eclipse.jdt.core.dom.ASTNode;
+import org.eclipse.jdt.core.dom.Statement;
+import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 
-import java.beans.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -54,6 +55,7 @@ public class RandomLocationStrategy implements LocationStrategy {
         if (allNodes == null || allNodes.isEmpty()) {
             return new ArrayList<>();
         }
+        allNodes.removeIf(node -> !(node instanceof Statement) && !(node instanceof FieldDeclaration));
         
         // Select exactly randomNodeCnt random nodes (default: 5)
         int nodeCount = randomNodeCnt > 0 ? randomNodeCnt : 5;

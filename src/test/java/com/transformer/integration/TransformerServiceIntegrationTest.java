@@ -57,9 +57,9 @@ public class TransformerServiceIntegrationTest {
 
         // Act
         TransformationResult result = transformerService.applyGuidedTransform(
-                inputFile, outputDir, bugInfo, "AddBrackets");
+                inputFile, outputDir, bugInfo, "AddGlobalAssignment");
         // TransformationResult result = transformerService.applyTargetTransform(
-        //         inputFile, outputDir, Arrays.asList(7), "AddBrackets");
+        //         inputFile, outputDir, Arrays.asList(3), "AddControlBranch");
         // TransformationResult result = transformerService.applyRandomTransform(inputFile, outputDir, 3, "AddBrackets");
         // Assert
         assertNotNull("Result should not be null", result);

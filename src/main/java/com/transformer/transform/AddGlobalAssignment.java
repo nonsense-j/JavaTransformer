@@ -79,9 +79,18 @@ public class AddGlobalAssignment extends Transform {
         assignment.setOperator(Assignment.Operator.ASSIGN);
         ExpressionStatement newAssignment = ast.newExpressionStatement(assignment);
         
-        // Create static initializer block
+        // Create static/non-static initializer block
         Initializer newInit = ast.newInitializer();
-        newInit.modifiers().add(ast.newModifier(Modifier.ModifierKeyword.STATIC_KEYWORD));
+        boolean hasStatic = false;
+        for (IExtendedModifier modifier : modifiers) {
+            if (modifier.isModifier() && ((Modifier) modifier).getKeyword() == Modifier.ModifierKeyword.STATIC_KEYWORD) {
+                hasStatic = true;
+                break;
+            }
+        }
+        if (hasStatic) {
+            newInit.modifiers().add(ast.newModifier(Modifier.ModifierKeyword.STATIC_KEYWORD));
+        }
         Block block = ast.newBlock();
         block.statements().add(newAssignment);
         newInit.setBody(block);
@@ -105,23 +114,29 @@ public class AddGlobalAssignment extends Transform {
         if (statement != null && statement instanceof FieldDeclaration) {
             FieldDeclaration fieldDecl = (FieldDeclaration) statement;
             
-            // Check if field has static modifier and initializer
-            @SuppressWarnings("unchecked")
-            List<IExtendedModifier> modifiers = fieldDecl.modifiers();
-            boolean hasStatic = false;
-            for (IExtendedModifier modifier : modifiers) {
-                if (modifier instanceof Modifier && ((Modifier) modifier).getKeyword() == Modifier.ModifierKeyword.STATIC_KEYWORD) {
-                    hasStatic = true;
-                    break;
-                }
+            // Check if field has initializer
+            VariableDeclarationFragment vdFragment = (VariableDeclarationFragment) fieldDecl.fragments().get(0);
+            if (vdFragment.getInitializer() != null) {
+                nodes.add(statement);
             }
+
+            // deprecated: only add initialize block for static global assignment
+            // @SuppressWarnings("unchecked")
+            // List<IExtendedModifier> modifiers = fieldDecl.modifiers();
+            // boolean hasStatic = false;
+            // for (IExtendedModifier modifier : modifiers) {
+            //     if (modifier instanceof Modifier && ((Modifier) modifier).getKeyword() == Modifier.ModifierKeyword.STATIC_KEYWORD) {
+            //         hasStatic = true;
+            //         break;
+            //     }
+            // }
             
-            if (hasStatic) {
-                VariableDeclarationFragment fragment = (VariableDeclarationFragment) fieldDecl.fragments().get(0);
-                if (fragment.getInitializer() != null) {
-                    nodes.add(statement);
-                }
-            }
+            // if (hasStatic) {
+            //     VariableDeclarationFragment fragment = (VariableDeclarationFragment) fieldDecl.fragments().get(0);
+            //     if (fragment.getInitializer() != null) {
+            //         nodes.add(statement);
+            //     }
+            // }
         }
         
         return nodes;
@@ -129,6 +144,6 @@ public class AddGlobalAssignment extends Transform {
 
     @Override
     public String getDescription() {
-        return "Splits static field declarations with initializers into separate declaration and static initializer blocks";
+        return "Splits field declarations with initializers into separate declaration and static initializer blocks";
     }
 }
