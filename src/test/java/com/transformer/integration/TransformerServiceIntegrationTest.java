@@ -59,7 +59,7 @@ public class TransformerServiceIntegrationTest {
         // TransformationResult result = transformerService.applyGuidedTransform(
         //         inputFile, outputDir, bugInfo, "AnonymousClassWrapper");
         TransformationResult result = transformerService.applyTargetTransform(
-                inputFile, outputDir, Arrays.asList(3), "AnonymousClassWrapper");
+                inputFile, outputDir, Arrays.asList(7), "AnonymousClassWrapper");
         // TransformationResult result = transformerService.applyRandomTransform(inputFile, outputDir, 3, "AddBrackets");
         // Assert
         assertNotNull("Result should not be null", result);

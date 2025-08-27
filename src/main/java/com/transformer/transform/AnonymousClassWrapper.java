@@ -14,11 +14,13 @@ import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionStatement;
+import org.eclipse.jdt.core.dom.FieldAccess;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.IBinding;
 import org.eclipse.jdt.core.dom.IExtendedModifier;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.IVariableBinding;
+import org.eclipse.jdt.core.dom.IfStatement;
 import org.eclipse.jdt.core.dom.MarkerAnnotation;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
@@ -38,6 +40,7 @@ import org.eclipse.text.edits.TextEdit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -65,42 +68,41 @@ public class AnonymousClassWrapper extends Transform {
         if (targetNode instanceof Statement) {
             // original_stmt -> new Object() { void execute() { original_stmt; } }.execute();
             Statement newStatement = (Statement) ASTNode.copySubtree(ast, targetNode);
-            HashMap<ASTNode, SimpleName> varMap = TypeWrapper.getAllVariables(newStatement);
+            LinkedHashSet<ASTNode> varSet = TypeWrapper.getAllVariables(newStatement);
             HashMap<ASTNode, SimpleName> varReplaceMap = new HashMap<>();
-            // substitute every variable in newStatement
-            HashMap<String, Integer> paramNameCountMap = new HashMap<>();
             ArrayList<SingleVariableDeclaration> paramNameList = new ArrayList<>();
             ArrayList<ASTNode> argVarList = new ArrayList<>();
 
-
-            for (Map.Entry<ASTNode, SimpleName> entry : varMap.entrySet()) {
-                ASTNode varNode = entry.getKey();
-                SimpleName varNameNode = entry.getValue();
-
-                String varSimpleName = varNameNode.getIdentifier();
-                int var_id = -1;
-                String varName = varSimpleName;
-                if (paramNameCountMap.containsKey(varSimpleName)) {
-                    var_id = paramNameCountMap.get(varSimpleName);
-                    varName = varSimpleName + Integer.toString(var_id);
-                    paramNameCountMap.put(varSimpleName, var_id + 1);
-                } else {
-                    paramNameCountMap.put(varSimpleName, 1);
+            for (ASTNode varNode : varSet) {
+                String varStr = varNode.toString();
+                // clear empty characters and get the transformed name like this.var -> thisVar, org.exp.Class.var -> orgExpClassVar
+                varStr = varStr.replaceAll("\\s+", "");
+                if (varStr.isEmpty()) {
+                    continue;
                 }
+                
+                // replace all non-word characters(including _) with . 
+                varStr = varStr.replaceAll("[^a-zA-Z0-9]+", ".");
+                String[] subVarStrs = varStr.split("\\.");
+                if (subVarStrs.length < 1)
+                    continue;
+                String newVarStr = "";
+                for (int i = 0; i < subVarStrs.length; i++) {
+                    String subVarStr = subVarStrs[i];
+                    if (i == 0)
+                        newVarStr += subVarStr.toLowerCase();
+                    else
+                        newVarStr += subVarStr.substring(0, 1).toUpperCase() + subVarStr.substring(1).toLowerCase();
+                }
+                SimpleName newVarNameNode = ast.newSimpleName(newVarStr);
+                varReplaceMap.put(varNode, newVarNameNode);
 
                 SingleVariableDeclaration param = ast.newSingleVariableDeclaration();
-                IBinding binding = varNameNode.resolveBinding();
-                if (binding == null || binding.getKind() != IBinding.VARIABLE) {
-                    return false;
-                }
-                ITypeBinding varTypeBinding = ((IVariableBinding) binding).getType();
-                Type varType = convertTypeBindingToASTType(ast, varTypeBinding);
-                param.setType(varType);
-                param.setName(ast.newSimpleName(varName));
+                param.setType(ast.newSimpleType(ast.newSimpleName("Object")));
+                param.setName(ast.newSimpleName(newVarStr));
                 paramNameList.add(param);
-                argVarList.add(ASTNode.copySubtree(ast, varNode));
 
-                varReplaceMap.put(varNode, ast.newSimpleName(varName));
+                argVarList.add(ASTNode.copySubtree(ast, varNode));
             }
 
             // create execute method
@@ -120,15 +122,17 @@ public class AnonymousClassWrapper extends Transform {
             // create methodCall with obj instance
             ClassInstanceCreation anonymousInstance = ast.newClassInstanceCreation();
             anonymousInstance.setAnonymousClassDeclaration(anonymousClassDecl);
+            anonymousInstance.setType(ast.newSimpleType(ast.newSimpleName("Object")));
             MethodInvocation methodCall = ast.newMethodInvocation();
             methodCall.setExpression(anonymousInstance);
             methodCall.setName(ast.newSimpleName("execute"));
             for (ASTNode argVar : argVarList) {
                 methodCall.arguments().add(argVar);
             }
+            ExpressionStatement methodCallStmt = ast.newExpressionStatement(methodCall);
             
             // replace original stmt
-            astRewrite.replace(targetNode, methodCall, null);
+            astRewrite.replace(targetNode, methodCallStmt, null);
             for  (Map.Entry<ASTNode, SimpleName> entry : varReplaceMap.entrySet()) {
                 ASTNode varNode = entry.getKey();
                 SimpleName varNameNode = entry.getValue();
@@ -175,6 +179,7 @@ public class AnonymousClassWrapper extends Transform {
             // create methodCall with obj instance
             ClassInstanceCreation anonymousInstance = ast.newClassInstanceCreation();
             anonymousInstance.setAnonymousClassDeclaration(anonymousClassDecl);
+            anonymousInstance.setType(ast.newSimpleType(ast.newSimpleName("Object")));
             MethodInvocation methodCall = ast.newMethodInvocation();
             methodCall.setExpression(anonymousInstance);
             methodCall.setName(ast.newSimpleName("execute"));
@@ -203,7 +208,7 @@ public class AnonymousClassWrapper extends Transform {
         ASTNode statement = TypeWrapper.getStatementOfNode(node);
         if (statement instanceof ExpressionStatement) {
             Expression expression = ((ExpressionStatement) statement).getExpression();
-            if (expression instanceof Assignment) {
+            if (!(expression instanceof Assignment)) {
                 nodes.add(statement);
             }
         } else if (statement instanceof VariableDeclarationStatement) {

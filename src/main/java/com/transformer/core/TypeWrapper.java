@@ -13,6 +13,8 @@ import org.eclipse.jdt.core.dom.BooleanLiteral;
 import org.eclipse.jdt.core.dom.CharacterLiteral;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.ConstructorInvocation;
+import org.eclipse.jdt.core.dom.EnumConstantDeclaration;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionStatement;
@@ -24,6 +26,7 @@ import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.IfStatement;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
+import org.eclipse.jdt.core.dom.InfixExpression;
 import org.eclipse.jdt.core.dom.Initializer;
 import org.eclipse.jdt.core.dom.MarkerAnnotation;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
@@ -36,6 +39,7 @@ import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.Statement;
 import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.StructuralPropertyDescriptor;
+import org.eclipse.jdt.core.dom.SuperMethodInvocation;
 import org.eclipse.jdt.core.dom.TryStatement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
@@ -43,6 +47,9 @@ import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jdt.core.dom.WhileStatement;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
+import org.eclipse.jdt.internal.compiler.ast.Argument;
+import org.eclipse.jdt.internal.compiler.ast.EqualExpression;
+import org.eclipse.jdt.internal.compiler.ast.OperatorExpression;
 import org.eclipse.jface.text.Document;
 import org.eclipse.text.edits.TextEdit;
 
@@ -57,6 +64,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -609,28 +617,97 @@ public class TypeWrapper {
     }
 
     /**
+     * Check whether the given ASTNode is a variable
+     */
+    public static boolean isVariable(SimpleName node) {
+        ASTNode parent = node.getParent();
+        if (parent == null) {
+            return false;
+        }
+        StructuralPropertyDescriptor loc = node.getLocationInParent();
+
+        // Exclusions
+        if (parent instanceof MethodInvocation && loc == MethodInvocation.NAME_PROPERTY) {
+            return false;
+        }
+        if (parent instanceof Type) {
+            return false;
+        }
+        if (parent instanceof PackageDeclaration || parent instanceof ImportDeclaration) {
+            return false;
+        }
+        if (parent instanceof MethodDeclaration && loc == MethodDeclaration.NAME_PROPERTY) {
+            return false;
+        }
+        if (parent instanceof TypeDeclaration && loc == TypeDeclaration.NAME_PROPERTY) {
+            return false;
+        }
+        if (parent instanceof FieldAccess && loc == FieldAccess.NAME_PROPERTY) {
+            return true;
+        }
+        if (parent instanceof QualifiedName && loc == QualifiedName.NAME_PROPERTY) {
+             return false;
+        }
+        return true;
+    }
+
+    public static boolean isVariable(QualifiedName node) {
+        ASTNode parent = node.getParent();
+        if (parent == null) return false;
+
+        if (parent instanceof Assignment) return true;
+
+        if (parent instanceof MethodInvocation && ((MethodInvocation) parent).arguments().contains(node)) return true;
+
+        if (parent instanceof VariableDeclarationFragment && ((VariableDeclarationFragment)parent).getInitializer() == node) return true;
+
+        if (parent instanceof InfixExpression) return true;
+
+        return false;
+    }
+
+    /**
      * Get variables from ASTNode
      */
-    public static HashMap<ASTNode, SimpleName> getAllVariables(ASTNode node) {
-        HashMap<ASTNode, SimpleName> varMap = new HashMap<>();
-        for (ASTNode childNode : getChildrenNodes(node)) {
-            if (childNode instanceof SimpleName) {
-                SimpleName simpleName = (SimpleName) childNode;
-                IBinding binding = simpleName.resolveBinding();
-                if (binding != null && binding.getKind() == IBinding.VARIABLE) {
-                    ASTNode parent = simpleName.getParent();
-                    if (parent instanceof FieldAccess || parent instanceof QualifiedName) {
-                        while (parent.getParent() instanceof FieldAccess || parent.getParent() instanceof QualifiedName) {
-                            parent = parent.getParent();
-                        }
-                        varMap.put(parent, simpleName);
-                    } else {
-                        varMap.put(simpleName, simpleName);
+    public static LinkedHashSet<ASTNode> getAllVariables(ASTNode node) {
+        LinkedHashSet<ASTNode> variables = new LinkedHashSet<>();
+
+        ArrayDeque<ASTNode> queue = new ArrayDeque<>();
+        queue.add(node);
+        
+        while (!queue.isEmpty()) {
+            ASTNode head = queue.pollFirst();
+            if (head instanceof FieldAccess) {
+                variables.add(head);
+                continue;
+            } else if (head instanceof SimpleName) {
+                if (isVariable((SimpleName) head)) {
+                    variables.add(head);
+                }
+                continue;
+            } else if (head instanceof QualifiedName) {
+                if (isVariable((QualifiedName) head)) {
+                    variables.add(head);
+                }
+                continue;
+            }
+            List<StructuralPropertyDescriptor> children = (List<StructuralPropertyDescriptor>) head.structuralPropertiesForType();
+            for (StructuralPropertyDescriptor descriptor : children) {
+                Object child = head.getStructuralProperty(descriptor);
+                if (child == null) {
+                    continue;
+                }
+                if (child instanceof ASTNode) {
+                    queue.addLast((ASTNode) child);
+                } else if (child instanceof List) {
+                    List<ASTNode> newChildren = (List<ASTNode>) child;
+                    for (ASTNode newNode : newChildren) {
+                        queue.addLast(newNode);
                     }
                 }
             }
         }
-        return varMap;
+        return variables;
     }
 
     /**
