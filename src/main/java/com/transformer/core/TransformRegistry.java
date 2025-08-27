@@ -8,7 +8,6 @@ import com.transformer.transform.AddGlobalAssignment;
 import com.transformer.transform.AddLocalAssignment;
 import com.transformer.transform.AddMethodCallToLiteral;
 import com.transformer.transform.AddRedundantLiteral;
-import com.transformer.transform.AddStaticAssignment;
 import com.transformer.transform.AddStaticModifier;
 import com.transformer.transform.AnonymousClassWrapper;
 import com.transformer.transform.CFWrapperWithDoWhile;
@@ -74,7 +73,6 @@ public class TransformRegistry {
         registerTransform(AddLocalAssignment.getInstance());
         registerTransform(AddMethodCallToLiteral.getInstance());
         registerTransform(AddRedundantLiteral.getInstance());
-        registerTransform(AddStaticAssignment.getInstance());
         registerTransform(AddStaticModifier.getInstance());
         registerTransform(AnonymousClassWrapper.getInstance());
         registerTransform(CFWrapperWithDoWhile.getInstance());

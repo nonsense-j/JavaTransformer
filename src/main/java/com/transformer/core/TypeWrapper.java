@@ -16,7 +16,12 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionStatement;
+import org.eclipse.jdt.core.dom.FieldAccess;
+import org.eclipse.jdt.core.dom.QualifiedName;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
+import org.eclipse.jdt.core.dom.IBinding;
+import org.eclipse.jdt.core.dom.ITypeBinding;
+import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.IfStatement;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.Initializer;
@@ -54,6 +59,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Refactored TypeWrapper class focused on AST manipulation, file I/O, and transformation tracking.
@@ -600,6 +606,31 @@ public class TypeWrapper {
             }
         }
         return identifiers;
+    }
+
+    /**
+     * Get variables from ASTNode
+     */
+    public static HashMap<ASTNode, SimpleName> getAllVariables(ASTNode node) {
+        HashMap<ASTNode, SimpleName> varMap = new HashMap<>();
+        for (ASTNode childNode : getChildrenNodes(node)) {
+            if (childNode instanceof SimpleName) {
+                SimpleName simpleName = (SimpleName) childNode;
+                IBinding binding = simpleName.resolveBinding();
+                if (binding != null && binding.getKind() == IBinding.VARIABLE) {
+                    ASTNode parent = simpleName.getParent();
+                    if (parent instanceof FieldAccess || parent instanceof QualifiedName) {
+                        while (parent.getParent() instanceof FieldAccess || parent.getParent() instanceof QualifiedName) {
+                            parent = parent.getParent();
+                        }
+                        varMap.put(parent, simpleName);
+                    } else {
+                        varMap.put(simpleName, simpleName);
+                    }
+                }
+            }
+        }
+        return varMap;
     }
 
     /**
